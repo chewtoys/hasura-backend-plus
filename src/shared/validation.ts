@@ -36,17 +36,19 @@ const extendedJoi: ExtendedJoi = Joi.extend((joi) => ({
   }
 }))
 
-const passwordRule = Joi.string().min(REGISTRATION.MIN_PASSWORD_LENGTH).max(128).required()
+const passwordRule = Joi.string().min(REGISTRATION.MIN_PASSWORD_LENGTH).max(128)
+const passwordRuleRequired = passwordRule.required()
 
 const emailRule = extendedJoi.string().email().required().allowedDomains()
 
 const accountFields = {
   email: emailRule,
-  password: passwordRule
+  password: passwordRuleRequired
 }
 
-const magicLinkAccountFields = {
+const accountFieldsMagicLink = {
   email: emailRule,
+  password: passwordRule
 }
 
 export const userDataFields = {
@@ -77,12 +79,19 @@ export const registerSchema = Joi.object({
   cookie: Joi.boolean()
 })
 
-export const magicLinkRegisterSchema = Joi.object({
-  ...magicLinkAccountFields,
+export const getRegisterSchema = () => {
+  return registerSchema
+}
+
+export const registerSchemaMagicLink = Joi.object({
+  ...accountFieldsMagicLink,
   ...userDataFields,
   cookie: Joi.boolean()
 })
 
+export const getRegisterSchemaMagicLink = () => {
+  return registerSchemaMagicLink
+}
 
 export const registerUserDataSchema = Joi.object(userDataFields)
 
@@ -120,15 +129,16 @@ export const loginAnonymouslySchema = Joi.object({
 })
 export const magicLinkLoginAnonymouslySchema = Joi.object({
   anonymous: Joi.boolean(),
-  email: Joi.string(), // these will be checked more rigorously in `loginSchema`
+  email: Joi.string() // these will be checked more rigorously in `loginSchema`
 })
 export const loginSchema = extendedJoi.object({
   email: emailRule,
   password: Joi.string().required(),
   cookie: Joi.boolean()
 })
-export const magicLinkLoginSchema = extendedJoi.object({
+export const loginSchemaMagicLink = extendedJoi.object({
   email: emailRule,
+  password: Joi.string(),
   cookie: Joi.boolean()
 })
 export const forgotSchema = Joi.object({ email: emailRule })
@@ -155,6 +165,6 @@ export const fileMetadataUpdate = Joi.object({
 
 export const magicLinkQuery = Joi.object({
   token: Joi.string().required(),
-  action: Joi.string().valid('log-in', 'sign-up').required(),
-  cookie: Joi.boolean().optional(),
-});
+  action: Joi.string().valid('log-in', 'register').required(),
+  cookie: Joi.boolean().optional()
+})

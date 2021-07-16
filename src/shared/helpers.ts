@@ -43,7 +43,10 @@ export const selectAccountByEmail = async (email: string): Promise<AccountData> 
 }
 
 export const selectAccountByTicket = async (ticket: string): Promise<AccountData> => {
-  const hasuraData = await request<QueryAccountData>(selectAccountByTicketQuery, { ticket })
+  const hasuraData = await request<QueryAccountData>(selectAccountByTicketQuery, {
+    ticket,
+    now: new Date()
+  })
   if (!hasuraData.auth_accounts[0]) throw new Error('Account does not exist.')
   return hasuraData.auth_accounts[0]
 }
@@ -98,12 +101,10 @@ export const hashPassword = async (password: string): Promise<string> => {
  * @param password Password to check.
  */
 export const checkHibp = async (password: string): Promise<void> => {
-  if (REGISTRATION.HIBP_ENABLE && (await pwnedPassword(password))) {
+  if (REGISTRATION.HIBP_ENABLED && (await pwnedPassword(password))) {
     throw new Error('Password is too weak.')
   }
 }
-
-export const generateRandomString = (): string => Math.random().toString(36).replace('0.', '')
 
 export const rotateTicket = async (ticket: string): Promise<string> => {
   const new_ticket = uuidv4()
@@ -119,4 +120,8 @@ export const getPermissionVariablesFromCookie = (req: RequestExtended): Permissi
   const { permission_variables } = COOKIES.SECRET ? req.signedCookies : req.cookies
   if (!permission_variables) throw new Error('No permission variables')
   return JSON.parse(permission_variables)
+}
+
+export const getEndURLOperator = ({ url }: { url: string }) => {
+  return url.includes('?') ? '&' : '?'
 }

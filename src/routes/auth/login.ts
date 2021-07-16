@@ -4,8 +4,8 @@ import { v4 as uuidv4 } from 'uuid'
 import { asyncWrapper, selectAccount } from '@shared/helpers'
 import { newJwtExpiry, createHasuraJwt } from '@shared/jwt'
 import { setRefreshToken } from '@shared/cookies'
-import { loginAnonymouslySchema, loginSchema, magicLinkLoginSchema } from '@shared/validation'
-import { insertAccount } from '@shared/queries'
+import { loginAnonymouslySchema, loginSchema, loginSchemaMagicLink } from '@shared/validation'
+import { insertAccount, setNewTicket } from '@shared/queries'
 import { request } from '@shared/request'
 import { AccountData, UserData, Session } from '@shared/types'
 import { emailClient } from '@shared/email'
@@ -22,7 +22,7 @@ async function loginAccount({ body, headers }: Request, res: Response): Promise<
   // default to true
   const useCookie = typeof body.cookie !== 'undefined' ? body.cookie : true
 
-  if (AUTHENTICATION.ANONYMOUS_USERS_ENABLE) {
+  if (AUTHENTICATION.ANONYMOUS_USERS_ENABLED) {
     const { anonymous } = await loginAnonymouslySchema.validateAsync(body)
 
     // if user tries to sign in anonymously
@@ -69,7 +69,10 @@ async function loginAccount({ body, headers }: Request, res: Response): Promise<
   }
 
   // else, login users normally
-  const { password } = await (AUTHENTICATION.ENABLE_MAGIC_LINK ? magicLinkLoginSchema : loginSchema).validateAsync(body)
+  const { password } = await (AUTHENTICATION.MAGIC_LINK_ENABLED
+    ? loginSchemaMagicLink
+    : loginSchema
+  ).validateAsync(body)
 
   const account = await selectAccount(body)
 
@@ -77,7 +80,7 @@ async function loginAccount({ body, headers }: Request, res: Response): Promise<
     return res.boom.badRequest('Account does not exist.')
   }
 
-  const { id, mfa_enabled, password_hash, active, ticket, email } = account
+  const { id, mfa_enabled, password_hash, active, email } = account
 
   if (typeof password === 'undefined') {
     const refresh_token = await setRefreshToken(res, id, useCookie)
@@ -98,11 +101,12 @@ async function loginAccount({ body, headers }: Request, res: Response): Promise<
           display_name: account.user.display_name,
           token: refresh_token,
           url: APPLICATION.SERVER_URL,
-          action: 'log in'
+          action: 'log in',
+          action_url: 'log-in'
         }
       })
 
-      return res.send({ magicLink: true });
+      return res.send({ magicLink: true })
     } catch (err) {
       console.error(err)
       return res.boom.badImplementation()
@@ -117,11 +121,11 @@ async function loginAccount({ body, headers }: Request, res: Response): Promise<
   const adminSecret = headers[HEADERS.ADMIN_SECRET_HEADER]
   const hasAdminSecret = Boolean(adminSecret)
   const isAdminSecretCorrect = adminSecret === APPLICATION.HASURA_GRAPHQL_ADMIN_SECRET
-  let userImpersonationValid = false;
-  if (AUTHENTICATION.USER_IMPERSONATION_ENABLE && hasAdminSecret && !isAdminSecretCorrect) {
+  let userImpersonationValid = false
+  if (AUTHENTICATION.USER_IMPERSONATION_ENABLED && hasAdminSecret && !isAdminSecretCorrect) {
     return res.boom.unauthorized('Invalid x-admin-secret')
-  } else if (AUTHENTICATION.USER_IMPERSONATION_ENABLE && hasAdminSecret && isAdminSecretCorrect) {
-    userImpersonationValid = true;
+  } else if (AUTHENTICATION.USER_IMPERSONATION_ENABLED && hasAdminSecret && isAdminSecretCorrect) {
+    userImpersonationValid = true
   }
 
   // Validate Password
@@ -131,6 +135,16 @@ async function loginAccount({ body, headers }: Request, res: Response): Promise<
   }
 
   if (mfa_enabled) {
+    const ticket = uuidv4()
+    const ticket_expires_at = new Date(+new Date() + 60 * 60 * 1000)
+
+    // set new ticket
+    await request(setNewTicket, {
+      user_id: account.user.id,
+      ticket,
+      ticket_expires_at
+    })
+
     return res.send({ mfa: true, ticket })
   }
 
